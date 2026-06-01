@@ -461,100 +461,88 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
 
   return (
     <div className={`rounded-xl ${borderCls} ${bgCls} overflow-hidden`}>
-      {/* Danger banner */}
+      {/* Danger banner — 1行に収める */}
       {hasDanger && (
-        <div className="bg-red-700 px-4 py-2">
-          <span className="text-white font-bold text-sm">⛔ 危険シグナル — 買い増し停止・撤退を検討</span>
+        <div className="bg-red-700 px-3 py-1.5 flex items-center gap-2">
+          <span className="text-white font-bold text-xs whitespace-nowrap">⛔ 危険シグナル</span>
+          <span className="text-red-200 text-xs">買い増し停止・撤退検討</span>
         </div>
       )}
 
-      <div className="p-4">
+      <div className="p-3">
         {/* Title row */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xl font-bold tracking-wide">{stock.ticker}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stock.type === 'core' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
-                {stock.type === 'core' ? 'コア' : 'サテライト'}
-              </span>
-            </div>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-lg font-bold tracking-wide leading-none">{stock.ticker}</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${stock.type === 'core' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
+              {stock.type === 'core' ? 'コア' : 'サテライト'}
+            </span>
             {stock.name !== stock.ticker && (
-              <p className="text-xs text-gray-500 mt-0.5 truncate">{stock.name}</p>
+              <span className="text-xs text-gray-500 truncate hidden sm:block">{stock.name}</span>
             )}
           </div>
-          <div className="flex gap-3 shrink-0">
-            <button onClick={onRefresh} disabled={loading} className="text-gray-500 active:text-gray-200 text-base">
-              {loading ? '⏳' : '🔄'}
-            </button>
-            <button onClick={onDelete} className="text-gray-600 active:text-red-400 text-base">🗑️</button>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={onRefresh} disabled={loading} className="text-gray-500 active:text-gray-300 text-sm">{loading ? '⏳' : '🔄'}</button>
+            <button onClick={onDelete} className="text-gray-600 active:text-red-400 text-sm">🗑️</button>
           </div>
         </div>
 
-        {/* Error / demo notice */}
+        {/* Price row — 横並びでコンパクトに */}
+        <div className="flex items-end justify-between gap-2 mb-2">
+          <div>
+            <p className="text-xs text-gray-500 leading-none mb-0.5">現在値{priceData?.demo ? ' (仮)' : ''}</p>
+            <p className={`text-2xl font-bold leading-none ${priceData?.demo ? 'text-gray-400' : 'text-white'}`}>
+              {priceData?.currentPrice ? fmtPrice(priceData.currentPrice, priceData.currency) : '—'}
+            </p>
+            {priceData?.lastUpdated && !priceData?.demo && (
+              <p className="text-xs text-gray-600 mt-0.5">{new Date(priceData.lastUpdated).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500 leading-none mb-0.5">3ヶ月高値比</p>
+            <p className={`text-xl font-bold leading-none ${
+              dp == null ? 'text-gray-500' :
+              dp <= -60 ? 'text-red-400' : dp <= -40 ? 'text-orange-400' :
+              dp <= -25 ? 'text-yellow-400' : 'text-green-400'
+            }`}>{dp != null ? `${dp.toFixed(1)}%` : '—'}</p>
+            {priceData?.high3m && <p className="text-xs text-gray-600 mt-0.5">高値 {fmtPrice(priceData.high3m, priceData.currency)}</p>}
+          </div>
+        </div>
+
+        {/* Error notice */}
         {priceData?.error && !priceData?.currentPrice && (
-          <div className="mt-2 bg-red-950/50 border border-red-800 rounded-lg px-3 py-2 text-xs text-red-400">
-            ⚠️ {priceData.error}
-          </div>
+          <p className="text-xs text-red-400 mb-2">⚠️ {priceData.error}</p>
         )}
-        {priceData?.demo && priceData?.currentPrice && (
-          <div className="mt-2 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 flex items-center gap-2">
-            <span className="text-xs text-yellow-500 font-bold">🎭 デモモード</span>
-            <span className="text-xs text-gray-500">株価取得不可のため仮データで表示中</span>
-          </div>
-        )}
+        {priceData?.demo && <p className="text-xs text-yellow-600 mb-2">🎭 デモ価格</p>}
 
-        {/* Price tiles */}
-        {priceData?.currentPrice && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="bg-gray-800/70 rounded-xl p-3">
-              <p className="text-xs text-gray-500 mb-0.5">現在値{priceData.demo ? ' (仮)' : ''}</p>
-              <p className={`text-xl font-bold ${priceData.demo ? 'text-gray-400' : ''}`}>{fmtPrice(priceData.currentPrice, priceData.currency)}</p>
-              {priceData.lastUpdated && !priceData.demo && (
-                <p className="text-xs text-gray-600 mt-0.5">
-                  {new Date(priceData.lastUpdated).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              )}
-            </div>
-            <div className="bg-gray-800/70 rounded-xl p-3">
-              <p className="text-xs text-gray-500 mb-0.5">3ヶ月高値比</p>
-              <p className={`text-xl font-bold ${
-                dp == null ? 'text-gray-500' :
-                dp <= -60 ? 'text-red-400' : dp <= -40 ? 'text-orange-400' :
-                dp <= -25 ? 'text-yellow-400' : dp <= -10 ? 'text-green-400' : 'text-green-300'
-              }`}>
-                {dp != null ? `${dp.toFixed(1)}%` : '-'}
-              </p>
-              <p className="text-xs text-gray-600 mt-0.5">高値 {fmtPrice(priceData.high3m, priceData.currency)}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Alert level grid */}
+        {/* 買い増しライン — 横スクロール可能な行形式 */}
         {priceData?.high3m && (
-          <div className="mt-3">
-            <p className="text-xs text-gray-500 mb-1.5">▼ 買い増しライン &amp; 予算比率</p>
-            <div className="grid grid-cols-4 gap-1">
+          <div className="mb-2">
+            <p className="text-xs text-gray-600 mb-1">買い増しライン</p>
+            <div className="flex gap-1">
               {ALERT_LEVELS.map(level => {
                 const target = priceData.high3m * (1 - level.drop / 100);
                 const reached = dp != null && dp <= -level.drop;
                 return (
-                  <div key={level.drop} className={`rounded-lg p-2 text-center border ${
-                    reached ? level.bgClass : 'bg-gray-800/60 border-gray-700'
+                  <div key={level.drop} className={`flex-1 rounded-lg py-1.5 px-1 text-center border transition-colors ${
+                    reached ? level.bgClass : 'bg-gray-800/50 border-gray-700/50'
                   }`}>
-                    <p className={`text-xs font-bold ${reached ? level.colorClass : 'text-gray-400'}`}>
-                      {level.label}
-                    </p>
-                    <p className={`text-xs mt-0.5 ${reached ? 'text-gray-200' : 'text-gray-400'}`}>
-                      {fmtPrice(target, priceData.currency)}
-                    </p>
-                    <p className={`text-xs mt-0.5 ${reached ? 'text-gray-300' : 'text-gray-600'}`}>
-                      {level.ratio}%資金
-                    </p>
-                    {reached && <p className="text-xs mt-0.5">🔔</p>}
+                    <p className={`text-xs font-bold leading-none ${reached ? level.colorClass : 'text-gray-500'}`}>{level.label}</p>
+                    <p className={`text-xs leading-none mt-1 font-medium ${reached ? 'text-white' : 'text-gray-400'}`}>{fmtPrice(target, priceData.currency)}</p>
+                    <p className={`text-xs leading-none mt-0.5 ${reached ? 'text-gray-300' : 'text-gray-600'}`}>{level.ratio}%</p>
+                    {reached && <p className="text-xs leading-none mt-0.5">🔔</p>}
                   </div>
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* 平均取得単価 */}
+        {avg != null && (
+          <div className="flex justify-between items-center mb-2 bg-gray-800/40 rounded-lg px-2.5 py-1.5">
+            <span className="text-xs text-gray-500">平均取得単価</span>
+            <span className="text-sm font-bold text-blue-300">{fmtPrice(avg, priceData?.currency)}</span>
           </div>
         )}
 
