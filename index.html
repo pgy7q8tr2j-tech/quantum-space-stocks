@@ -45,7 +45,7 @@ const saveData = (d) => {
 const genId = () => Math.random().toString(36).slice(2, 11);
 
 /* ──────────────── Sparkline Chart ──────────────── */
-function SparklineChart({ closes, high3m, currentPrice, currency }) {
+function SparklineChart({ closes, high3m, currentPrice, currency, chartRange }) {
   if (!closes || closes.length < 2) return (
     <div className="flex items-center justify-center h-24 text-gray-600 text-xs">データなし</div>
   );
@@ -115,11 +115,21 @@ function SparklineChart({ closes, high3m, currentPrice, currency }) {
           r="3" fill={lineColor} stroke="#111827" strokeWidth="1.5" />
 
         {/* X-axis labels (start / mid / end) */}
-        {[0, Math.floor(closes.length / 2), closes.length - 1].map((i, idx) => (
-          <text key={idx} x={toX(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#6B7280">
-            {idx === 0 ? '3ヶ月前' : idx === 1 ? '1.5ヶ月前' : '現在'}
-          </text>
-        ))}
+        {(() => {
+          const labelMap = {
+            '3mo': ['3ヶ月前', '1.5ヶ月前', '現在'],
+            '6mo': ['6ヶ月前', '3ヶ月前', '現在'],
+            '1y':  ['1年前', '6ヶ月前', '現在'],
+            '2y':  ['2年前', '1年前', '現在'],
+            'max': ['開始', '中間', '現在'],
+          };
+          const labels = labelMap[chartRange] || labelMap['1y'];
+          return [0, Math.floor(closes.length / 2), closes.length - 1].map((i, idx) => (
+            <text key={idx} x={toX(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#6B7280">
+              {labels[idx]}
+            </text>
+          ));
+        })()}
       </svg>
 
       {/* TradingView link */}
@@ -575,6 +585,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
               high3m={priceData?.high3m}
               currentPrice={priceData?.currentPrice}
               currency={priceData?.currency || 'USD'}
+              chartRange={chartRange}
             />
           ) : (
             <div className="flex items-center justify-center h-20 text-gray-600 text-xs">
