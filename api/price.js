@@ -6,10 +6,11 @@ export default async function handler(req, res) {
   if (!ticker) return res.status(400).json({ error: 'ticker is required' });
 
   const symbol = ticker.toUpperCase().trim();
+  const range  = req.query.range || '3mo'; // 3mo,6mo,1y,2y,5y
 
   const endpoints = [
-    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`,
-    `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`,
   ];
 
   const headers = {

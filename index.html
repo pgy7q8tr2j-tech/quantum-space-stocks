@@ -289,21 +289,22 @@ function App() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
-      <Header alerts={alerts} onRefresh={() => refreshPrices()} tab={tab} setTab={setTab} alertCount={alerts.length} />
-
-      {/* Desktop: sidebar + main / Mobile: single column */}
-      <div className="flex flex-1 max-w-7xl mx-auto w-full">
-        {/* Desktop sidebar nav */}
-        <aside className="hidden md:flex flex-col w-52 shrink-0 border-r border-gray-800 bg-gray-900 sticky top-[60px] h-[calc(100vh-60px)] pt-4 px-3 gap-1">
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex">
+      {/* ── Left Sidebar (desktop) ── */}
+      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-gray-800 bg-gray-900 sticky top-0 h-screen z-20">
+        <div className="px-4 py-4 border-b border-gray-800">
+          <h1 className="text-sm font-bold text-blue-400 leading-tight">⚛️ 量子・宇宙株 監視</h1>
+          <p className="text-xs text-gray-500 mt-0.5">段階的買い増し戦略ツール</p>
+        </div>
+        <nav className="flex-1 px-3 pt-3 space-y-1">
           {[
             { id: 'watchlist', icon: '📊', label: '監視リスト' },
             { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
             { id: 'records',   icon: '📝', label: '買い増し記録' },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors w-full text-left relative ${tab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}>
-              <span className="text-lg">{t.icon}</span>
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors w-full text-left ${tab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}>
+              <span className="text-base">{t.icon}</span>
               {t.label}
               {t.id === 'watchlist' && alerts.length > 0 && (
                 <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0">
@@ -312,10 +313,28 @@ function App() {
               )}
             </button>
           ))}
-        </aside>
+        </nav>
+        {/* Refresh button at bottom of sidebar */}
+        <div className="px-3 pb-4">
+          <button onClick={() => refreshPrices()}
+            className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-sm font-medium transition-colors">
+            🔄 株価を更新
+          </button>
+        </div>
+      </aside>
 
-        {/* Main content */}
-        <main className="flex-1 min-w-0 pb-20 md:pb-6">
+      {/* ── Mobile header ── */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between z-10 h-14">
+        <h1 className="text-base font-bold text-blue-400">⚛️ 量子・宇宙株 監視</h1>
+        <button onClick={() => refreshPrices()}
+          className="bg-gray-800 active:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg text-xs">
+          🔄 更新
+        </button>
+      </div>
+
+      {/* ── Main content ── */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <main className="flex-1 pt-14 md:pt-0 pb-20 md:pb-6">
           {tab === 'watchlist' && (
             <WatchList stocks={stocks} priceData={priceData} loading={loading}
               onAdd={() => setShowAdd(true)} onDelete={delStock}
@@ -327,39 +346,12 @@ function App() {
         </main>
       </div>
 
-      {/* Mobile bottom tab bar only */}
+      {/* Mobile bottom tab bar */}
       <TabBar tab={tab} setTab={setTab} alertCount={alerts.length} />
       {showAdd && <AddModal onAdd={addStock} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
-
-/* ──────────────── Header ──────────────── */
-function Header({ alerts, onRefresh, tab, setTab, alertCount }) {
-  return (
-    <div className="bg-gray-900 border-b border-gray-800 px-4 md:px-8 py-3 flex items-center justify-between sticky top-0 z-10 h-[60px]">
-      <div className="flex items-center gap-3">
-        <div>
-          <h1 className="text-base md:text-lg font-bold text-blue-400 leading-tight">⚛️ 量子・宇宙株 監視</h1>
-          <p className="text-xs text-gray-500 hidden md:block">段階的買い増し戦略ツール</p>
-        </div>
-        {/* Desktop tab buttons in header */}
-        <nav className="hidden md:flex items-center gap-1 ml-6">
-          {[
-            { id: 'watchlist', icon: '📊', label: '監視リスト' },
-            { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
-            { id: 'records',   icon: '📝', label: '買い増し記録' },
-          ].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${tab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}>
-              <span>{t.icon}</span>{t.label}
-              {t.id === 'watchlist' && alertCount > 0 && (
-                <span className="ml-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">{alertCount > 9 ? '9+' : alertCount}</span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
       <button onClick={onRefresh}
         className="bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-300 px-3 py-2 rounded-lg text-xs transition-colors">
         🔄 更新
@@ -443,25 +435,42 @@ function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRe
 function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, onAddPurchase }) {
   const [open, setOpen] = useState(false);
   const [buyForm, setBuyForm] = useState(false);
-  const [showChart, setShowChart] = useState(false);
+  const [chartRange, setChartRange] = useState('1y');
+  const [chartCloses, setChartCloses] = useState(null);
+  const [chartLoading, setChartLoading] = useState(false);
 
+  // Fetch chart data when range changes
+  useEffect(() => {
+    if (!stock.ticker) return;
+    let cancelled = false;
+    setChartLoading(true);
+    fetch(`/api/price?ticker=${stock.ticker}&range=${chartRange}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setChartCloses(d?.closes || []); })
+      .catch(() => { if (!cancelled) setChartCloses([]); })
+      .finally(() => { if (!cancelled) setChartLoading(false); });
+    return () => { cancelled = true; };
+  }, [stock.ticker, chartRange]);
+
+  const hasDanger = Object.values(stock.dangerSignals || {}).some(v => v);
   const status = calcStatus(stock);
   const dp = dropPct(priceData?.currentPrice, priceData?.high3m);
   const avg = calcAvgCost(stock.purchases);
   const f = stock.financials || {};
   const runway = f.cash > 0 && f.annualLoss > 0 ? f.cash / f.annualLoss : null;
 
-  const borderColor = status === 'good' ? 'border-green-700' : status === 'warning' ? 'border-yellow-700' : 'border-gray-700';
-  const bgColor = status === 'good' ? 'bg-green-950/10' : 'bg-gray-900';
+  // Border: red for danger, else subtle
+  const borderCls = hasDanger ? 'border-2 border-red-600' : 'border border-gray-700/80';
+  const bgCls = hasDanger ? 'bg-red-950/10' : 'bg-gray-900';
 
   const updF = (k, v) => onUpdate({ financials: { ...f, [k]: v } });
   const togDanger = (k) => onUpdate({ dangerSignals: { ...stock.dangerSignals, [k]: !stock.dangerSignals[k] } });
 
   return (
-    <div className={`rounded-xl border ${borderColor} ${bgColor} overflow-hidden`}>
+    <div className={`rounded-xl ${borderCls} ${bgCls} overflow-hidden`}>
       {/* Danger banner */}
-      {status === 'danger' && (
-        <div className="bg-red-700 px-4 py-2 flex items-center gap-2">
+      {hasDanger && (
+        <div className="bg-red-700 px-4 py-2">
           <span className="text-white font-bold text-sm">⛔ 危険シグナル — 買い増し停止・撤退を検討</span>
         </div>
       )}
@@ -474,12 +483,6 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
               <span className="text-xl font-bold tracking-wide">{stock.ticker}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stock.type === 'core' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
                 {stock.type === 'core' ? 'コア' : 'サテライト'}
-              </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                status === 'good' ? 'bg-green-900 text-green-300' :
-                status === 'danger' ? 'bg-red-900 text-red-300' : 'bg-yellow-900 text-yellow-300'
-              }`}>
-                {status === 'good' ? '✅ 良好' : status === 'danger' ? '❌ 危険' : '⚠️ 要確認'}
               </span>
             </div>
             {stock.name !== stock.ticker && (
@@ -570,37 +573,46 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
           </div>
         )}
 
-        {/* Chart toggle button */}
-        <button onClick={() => setShowChart(!showChart)}
-          className={`w-full mt-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${showChart ? 'bg-blue-900/60 text-blue-300 border border-blue-700' : 'bg-gray-800/60 text-gray-400 hover:text-gray-200'}`}>
-          📈 {showChart ? 'チャートを閉じる' : '3ヶ月チャートを表示'}
-        </button>
-
-        {/* Inline sparkline chart */}
-        {showChart && (
-          <div className="mt-2 bg-gray-900 rounded-xl p-3 border border-gray-700/50">
-            {priceData?.closes?.length > 1 ? (
-              <>
-                <SparklineChart
-                  closes={priceData.closes}
-                  high3m={priceData.high3m}
-                  currentPrice={priceData.currentPrice}
-                  currency={priceData.currency}
-                  ticker={stock.ticker}
-                />
-                <a href={`https://finance.yahoo.com/chart/${stock.ticker}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="block text-center text-xs text-blue-500 hover:text-blue-400 mt-2 py-1">
-                  🔗 Yahoo Finance で詳細チャートを見る →
-                </a>
-              </>
-            ) : priceData?.demo ? (
-              <p className="text-center text-xs text-gray-500 py-4">🎭 デモモード：チャートデータなし</p>
-            ) : (
-              <p className="text-center text-xs text-gray-500 py-4">🔄 更新ボタンを押してデータを取得してください</p>
-            )}
+        {/* ── 常時表示チャート ── */}
+        <div className="mt-3 bg-gray-800/40 rounded-xl p-2 border border-gray-700/40">
+          {/* Period selector */}
+          <div className="flex gap-1 mb-2">
+            {[
+              { v:'3mo', label:'3M' },
+              { v:'6mo', label:'6M' },
+              { v:'1y',  label:'1Y', rec:true },
+              { v:'2y',  label:'2Y' },
+              { v:'5y',  label:'全期間' },
+            ].map(p => (
+              <button key={p.v} onClick={() => setChartRange(p.v)}
+                className={`flex-1 py-1 text-xs rounded font-medium transition-colors ${
+                  chartRange === p.v ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}>
+                {p.label}{p.rec ? '★' : ''}
+              </button>
+            ))}
           </div>
-        )}
+          {/* Chart */}
+          {chartLoading ? (
+            <div className="flex items-center justify-center h-20 text-gray-600 text-xs">読み込み中…</div>
+          ) : chartCloses?.length > 1 ? (
+            <SparklineChart
+              closes={chartCloses}
+              high3m={priceData?.high3m}
+              currentPrice={priceData?.currentPrice}
+              currency={priceData?.currency || 'USD'}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-20 text-gray-600 text-xs">
+              {priceData?.demo ? '🎭 デモモード（チャートデータなし）' : 'データなし — 🔄更新してください'}
+            </div>
+          )}
+          <a href={`https://finance.yahoo.com/chart/${stock.ticker}`}
+            target="_blank" rel="noopener noreferrer"
+            className="block text-center text-xs text-gray-600 hover:text-blue-400 mt-1">
+            Yahoo Finance で詳細を見る →
+          </a>
+        </div>
 
         {/* Expand toggle */}
         <button onClick={() => setOpen(!open)}
