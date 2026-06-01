@@ -452,8 +452,8 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
   const f = stock.financials || {};
   const runway = f.cash > 0 && f.annualLoss > 0 ? f.cash / f.annualLoss : null;
 
-  // Border: red for danger, else subtle
-  const borderCls = hasDanger ? 'border-2 border-red-600' : 'border border-gray-700/80';
+  // Border: red for danger, green for good, else subtle
+  const borderCls = hasDanger ? 'border-2 border-red-600' : status === 'good' ? 'border-2 border-green-600' : 'border border-gray-700/80';
   const bgCls = hasDanger ? 'bg-red-950/10' : 'bg-gray-900';
 
   const updF = (k, v) => onUpdate({ financials: { ...f, [k]: v } });
@@ -461,13 +461,6 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
 
   return (
     <div className={`rounded-xl ${borderCls} ${bgCls} overflow-hidden`}>
-      {/* Danger banner — 1行に収める */}
-      {hasDanger && (
-        <div className="bg-red-700 px-3 py-1.5 flex items-center gap-2">
-          <span className="text-white font-bold text-xs whitespace-nowrap">⛔ 危険シグナル</span>
-          <span className="text-red-200 text-xs">買い増し停止・撤退検討</span>
-        </div>
-      )}
 
       <div className="p-3">
         {/* Title row */}
