@@ -206,18 +206,45 @@ function App() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 pb-20 max-w-lg mx-auto">
-      <Header alerts={alerts} onRefresh={() => refreshPrices()} />
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+      <Header alerts={alerts} onRefresh={() => refreshPrices()} tab={tab} setTab={setTab} alertCount={alerts.length} />
 
-      {tab === 'watchlist' && (
-        <WatchList stocks={stocks} priceData={priceData} loading={loading}
-          onAdd={() => setShowAdd(true)} onDelete={delStock}
-          onUpdate={updStock} onRefresh={refreshPrices}
-          alerts={alerts} addPurchase={addPurchase} />
-      )}
-      {tab === 'portfolio' && <Portfolio stocks={stocks} priceData={priceData} />}
-      {tab === 'records' && <Records stocks={stocks} onAdd={addPurchase} onDelete={delPurchase} />}
+      {/* Desktop: sidebar + main / Mobile: single column */}
+      <div className="flex flex-1 max-w-7xl mx-auto w-full">
+        {/* Desktop sidebar nav */}
+        <aside className="hidden md:flex flex-col w-52 shrink-0 border-r border-gray-800 bg-gray-900 sticky top-[60px] h-[calc(100vh-60px)] pt-4 px-3 gap-1">
+          {[
+            { id: 'watchlist', icon: '📊', label: '監視リスト' },
+            { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
+            { id: 'records',   icon: '📝', label: '買い増し記録' },
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors w-full text-left relative ${tab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}>
+              <span className="text-lg">{t.icon}</span>
+              {t.label}
+              {t.id === 'watchlist' && alerts.length > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0">
+                  {alerts.length > 9 ? '9+' : alerts.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </aside>
 
+        {/* Main content */}
+        <main className="flex-1 min-w-0 pb-20 md:pb-6">
+          {tab === 'watchlist' && (
+            <WatchList stocks={stocks} priceData={priceData} loading={loading}
+              onAdd={() => setShowAdd(true)} onDelete={delStock}
+              onUpdate={updStock} onRefresh={refreshPrices}
+              alerts={alerts} addPurchase={addPurchase} />
+          )}
+          {tab === 'portfolio' && <Portfolio stocks={stocks} priceData={priceData} />}
+          {tab === 'records' && <Records stocks={stocks} onAdd={addPurchase} onDelete={delPurchase} />}
+        </main>
+      </div>
+
+      {/* Mobile bottom tab bar only */}
       <TabBar tab={tab} setTab={setTab} alertCount={alerts.length} />
       {showAdd && <AddModal onAdd={addStock} onClose={() => setShowAdd(false)} />}
     </div>
@@ -225,22 +252,40 @@ function App() {
 }
 
 /* ──────────────── Header ──────────────── */
-function Header({ alerts, onRefresh }) {
+function Header({ alerts, onRefresh, tab, setTab, alertCount }) {
   return (
-    <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-      <div>
-        <h1 className="text-base font-bold text-blue-400 leading-tight">⚛️ 量子・宇宙株 監視</h1>
-        <p className="text-xs text-gray-500">段階的買い増し戦略ツール</p>
+    <div className="bg-gray-900 border-b border-gray-800 px-4 md:px-8 py-3 flex items-center justify-between sticky top-0 z-10 h-[60px]">
+      <div className="flex items-center gap-3">
+        <div>
+          <h1 className="text-base md:text-lg font-bold text-blue-400 leading-tight">⚛️ 量子・宇宙株 監視</h1>
+          <p className="text-xs text-gray-500 hidden md:block">段階的買い増し戦略ツール</p>
+        </div>
+        {/* Desktop tab buttons in header */}
+        <nav className="hidden md:flex items-center gap-1 ml-6">
+          {[
+            { id: 'watchlist', icon: '📊', label: '監視リスト' },
+            { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
+            { id: 'records',   icon: '📝', label: '買い増し記録' },
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${tab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}>
+              <span>{t.icon}</span>{t.label}
+              {t.id === 'watchlist' && alertCount > 0 && (
+                <span className="ml-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">{alertCount > 9 ? '9+' : alertCount}</span>
+              )}
+            </button>
+          ))}
+        </nav>
       </div>
       <button onClick={onRefresh}
-        className="bg-gray-800 active:bg-gray-700 text-gray-300 px-3 py-2 rounded-lg text-xs transition-colors">
+        className="bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-300 px-3 py-2 rounded-lg text-xs transition-colors">
         🔄 更新
       </button>
     </div>
   );
 }
 
-/* ──────────────── TabBar ──────────────── */
+/* ──────────────── TabBar (mobile only) ──────────────── */
 function TabBar({ tab, setTab, alertCount }) {
   const tabs = [
     { id: 'watchlist', icon: '📊', label: '監視リスト' },
@@ -248,7 +293,7 @@ function TabBar({ tab, setTab, alertCount }) {
     { id: 'records',   icon: '📝', label: '買い増し記録' },
   ];
   return (
-    <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-gray-900 border-t border-gray-800 flex z-20">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 flex z-20">
       {tabs.map(t => (
         <button key={t.id} onClick={() => setTab(t.id)}
           className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 relative transition-colors ${tab === t.id ? 'text-blue-400' : 'text-gray-500'}`}>
@@ -270,7 +315,7 @@ function TabBar({ tab, setTab, alertCount }) {
 ══════════════════════════════════════════ */
 function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRefresh, alerts, addPurchase }) {
   return (
-    <div className="p-3 space-y-3">
+    <div className="p-3 md:p-6 space-y-3">
       {alerts.length > 0 && (
         <div className="bg-yellow-900/40 border border-yellow-700 rounded-xl p-3">
           <p className="text-yellow-400 font-bold text-sm mb-2">🔔 買い増しアラート ({alerts.length}件)</p>
@@ -297,14 +342,16 @@ function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRe
         </div>
       )}
 
-      {stocks.map(s => (
-        <StockCard key={s.id} stock={s} priceData={priceData[s.ticker]}
-          loading={loading[s.ticker]}
-          onDelete={() => onDelete(s.id)}
-          onUpdate={(p) => onUpdate(s.id, p)}
-          onRefresh={() => onRefresh([s.ticker])}
-          onAddPurchase={(p) => addPurchase(s.id, p)} />
-      ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {stocks.map(s => (
+          <StockCard key={s.id} stock={s} priceData={priceData[s.ticker]}
+            loading={loading[s.ticker]}
+            onDelete={() => onDelete(s.id)}
+            onUpdate={(p) => onUpdate(s.id, p)}
+            onRefresh={() => onRefresh([s.ticker])}
+            onAddPurchase={(p) => addPurchase(s.id, p)} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -679,8 +726,8 @@ function Portfolio({ stocks, priceData }) {
   const dev = Math.abs(coreRatio - TARGET_CORE);
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold">ポートフォリオ</h2>
+    <div className="p-4 md:p-6 space-y-4 max-w-4xl">
+      <h2 className="text-xl font-bold">ポートフォリオ</h2>
 
       {n === 0 ? (
         <div className="text-center text-gray-600 py-16">
@@ -801,8 +848,8 @@ function Records({ stocks, onAdd, onDelete }) {
   const targeted = filter === 'all' ? stocks : stocks.filter(s => s.id === filter);
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold">買い増し記録</h2>
+    <div className="p-4 md:p-6 space-y-4 max-w-4xl">
+      <h2 className="text-xl font-bold">買い増し記録</h2>
 
       {/* Filter pills */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
