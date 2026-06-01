@@ -320,14 +320,14 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
   const f = stock.financials || {};
   const runway = f.cash > 0 && f.annualLoss > 0 ? f.cash / f.annualLoss : null;
 
-  const borderColor = status === 'danger' ? 'border-red-600' : status === 'good' ? 'border-green-600' : 'border-yellow-600';
-  const bgColor = status === 'danger' ? 'bg-red-950/20' : status === 'good' ? 'bg-green-950/15' : 'bg-yellow-950/15';
+  const borderColor = status === 'good' ? 'border-green-700' : status === 'warning' ? 'border-yellow-700' : 'border-gray-700';
+  const bgColor = status === 'good' ? 'bg-green-950/10' : 'bg-gray-900';
 
   const updF = (k, v) => onUpdate({ financials: { ...f, [k]: v } });
   const togDanger = (k) => onUpdate({ dangerSignals: { ...stock.dangerSignals, [k]: !stock.dangerSignals[k] } });
 
   return (
-    <div className={`rounded-xl border-2 ${borderColor} ${bgColor} overflow-hidden`}>
+    <div className={`rounded-xl border ${borderColor} ${bgColor} overflow-hidden`}>
       {/* Danger banner */}
       {status === 'danger' && (
         <div className="bg-red-700 px-4 py-2 flex items-center gap-2">
@@ -528,7 +528,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
                   <span className="text-sm text-gray-300">{label}</span>
                   <button onClick={() => togDanger(k)}
                     className={`relative w-12 h-6 rounded-full transition-colors ${stock.dangerSignals[k] ? 'bg-red-600' : 'bg-gray-600'}`}>
-                    <span className={`toggle-thumb absolute top-0.5 w-5 h-5 bg-white rounded-full shadow ${stock.dangerSignals[k] ? 'translate-x-6' : 'translate-x-0.5'}`} style={{transition:'transform .2s'}} />
+                    <span className={`toggle-thumb absolute top-[3px] w-[18px] h-[18px] bg-white rounded-full shadow ${stock.dangerSignals[k] ? 'translate-x-[26px]' : 'translate-x-[3px]'}`} style={{transition:'transform .2s'}} />
                   </button>
                 </div>
               ))}
