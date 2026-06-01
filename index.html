@@ -410,7 +410,7 @@ function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRe
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {stocks.map(s => (
           <StockCard key={s.id} stock={s} priceData={priceData[s.ticker]}
             loading={loading[s.ticker]}
@@ -573,7 +573,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
             {[
               { v:'3mo', label:'3M' },
               { v:'6mo', label:'6M' },
-              { v:'1y',  label:'1Y', rec:true },
+              { v:'1y',  label:'1Y' },
               { v:'2y',  label:'2Y' },
               { v:'5y',  label:'全期間' },
             ].map(p => (
