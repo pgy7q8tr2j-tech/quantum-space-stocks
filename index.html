@@ -718,11 +718,24 @@ function AddModal({ onAdd, onClose }) {
    Portfolio Tab
 ══════════════════════════════════════════ */
 function Portfolio({ stocks, priceData }) {
-  const cores = stocks.filter(s => s.type === 'core');
-  const sats  = stocks.filter(s => s.type === 'satellite');
-  const n = stocks.length;
-  const coreRatio = n ? cores.length / n * 100 : 0;
-  const satRatio  = n ? sats.length  / n * 100 : 0;
+  // 買い増し記録がある銘柄のみ対象
+  const heldStocks = stocks.filter(s => s.purchases?.length > 0);
+  const cores = heldStocks.filter(s => s.type === 'core');
+  const sats  = heldStocks.filter(s => s.type === 'satellite');
+  const n = heldStocks.length;
+
+  // 保有金額ベースで比率計算
+  const calcValue = (s) => {
+    const avg = calcAvgCost(s.purchases);
+    const shares = s.purchases.reduce((a, p) => a + p.shares, 0);
+    const cur = priceData[s.ticker]?.currentPrice;
+    return cur ? cur * shares : avg * shares;
+  };
+  const coreVal = cores.reduce((a, s) => a + calcValue(s), 0);
+  const satVal  = sats.reduce((a, s) => a + calcValue(s), 0);
+  const totalVal = coreVal + satVal;
+  const coreRatio = totalVal ? coreVal / totalVal * 100 : 0;
+  const satRatio  = totalVal ? satVal  / totalVal * 100 : 0;
   const dev = Math.abs(coreRatio - TARGET_CORE);
 
   return (
@@ -732,13 +745,14 @@ function Portfolio({ stocks, priceData }) {
       {n === 0 ? (
         <div className="text-center text-gray-600 py-16">
           <p className="text-5xl mb-3">🥧</p>
-          <p className="text-sm">銘柄を追加してください</p>
+          <p className="text-sm font-medium text-gray-500">まだ買い増し記録がありません</p>
+          <p className="text-xs text-gray-600 mt-1">「監視リスト」の銘柄カードから購入を記録すると表示されます</p>
         </div>
       ) : (
         <>
           {/* Donut */}
           <div className="bg-gray-900 rounded-2xl p-4">
-            <p className="text-sm text-gray-400 mb-3">コア / サテライト比率（銘柄数ベース）</p>
+            <p className="text-sm text-gray-400 mb-3">コア / サテライト比率（保有金額ベース）</p>
             <DonutChart coreRatio={coreRatio} satRatio={satRatio} />
             <div className="flex justify-center gap-8 mt-4">
               <div className="text-center">
@@ -747,7 +761,7 @@ function Portfolio({ stocks, priceData }) {
                   <span className="text-sm text-gray-300">コア</span>
                 </div>
                 <p className="text-2xl font-bold text-blue-400">{coreRatio.toFixed(0)}%</p>
-                <p className="text-xs text-gray-500">{cores.length} 銘柄</p>
+                <p className="text-xs text-gray-500">{cores.length} 銘柄 · ${coreVal.toFixed(0)}</p>
               </div>
               <div className="text-center">
                 <div className="flex items-center gap-1.5 justify-center mb-1">
@@ -755,9 +769,10 @@ function Portfolio({ stocks, priceData }) {
                   <span className="text-sm text-gray-300">サテライト</span>
                 </div>
                 <p className="text-2xl font-bold text-purple-400">{satRatio.toFixed(0)}%</p>
-                <p className="text-xs text-gray-500">{sats.length} 銘柄</p>
+                <p className="text-xs text-gray-500">{sats.length} 銘柄 · ${satVal.toFixed(0)}</p>
               </div>
             </div>
+            <p className="text-center text-xs text-gray-600 mt-3">合計評価額 ${totalVal.toFixed(0)}</p>
           </div>
 
           {/* Deviation */}
@@ -773,13 +788,12 @@ function Portfolio({ stocks, priceData }) {
           {/* Stock rows */}
           {[{ label: 'コア銘柄', list: cores, color: 'text-blue-400' },
             { label: 'サテライト銘柄', list: sats, color: 'text-purple-400' }].map(({ label, list, color }) => (
-            <div key={label}>
-              <p className={`text-sm font-bold ${color} mb-2`}>{label}</p>
-              {list.length === 0
-                ? <p className="text-gray-600 text-sm px-1">なし</p>
-                : list.map(s => <PortfolioRow key={s.id} stock={s} priceData={priceData[s.ticker]} />)
-              }
-            </div>
+            list.length > 0 && (
+              <div key={label}>
+                <p className={`text-sm font-bold ${color} mb-2`}>{label}</p>
+                {list.map(s => <PortfolioRow key={s.id} stock={s} priceData={priceData[s.ticker]} />)}
+              </div>
+            )
           ))}
         </>
       )}
