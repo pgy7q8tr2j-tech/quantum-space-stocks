@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>⚛️ 量子・宇宙株 監視</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .toggle-thumb { transition: transform 0.2s; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+/* ──────────────── Constants ──────────────── */
+const ALERT_LEVELS = [
+  { drop: 25, ratio: 20, label: '-25%', colorClass: 'text-yellow-400', bgClass: 'bg-yellow-900/60 border-yellow-600' },
+  { drop: 40, ratio: 25, label: '-40%', colorClass: 'text-orange-400', bgClass: 'bg-orange-900/60 border-orange-600' },
+  { drop: 60, ratio: 25, label: '-60%', colorClass: 'text-red-400',    bgClass: 'bg-red-900/60 border-red-600' },
+  { drop: 75, ratio: 30, label: '-75%', colorClass: 'text-red-300',    bgClass: 'bg-red-950/80 border-red-800' },
+];
+const TARGET_CORE = 70;
+const STORAGE_KEY = 'qspace_v2';
+
+/* ──────────────── Storage ──────────────── */
+const loadData = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : { stocks: [], priceData: {} };
+  } catch { return { stocks: [], priceData: {} }; }
+};
+const saveData = (d) => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+};
+const genId = () => Math.random().toString(36).slice(2, 11);
+
+/* ──────────────── Mock data (demo mode) ──────────────── */
+const mockSeed = (ticker) => {
+  let h = 0;
+  for (let i = 0; i < ticker.length; i++) h = (Math.imul(31, h) + ticker.charCodeAt(i)) | 0;
+  return Math.abs(h);
+};
+const genMockPrice = (ticker) => {
+  const seed = mockSeed(ticker);
+  const rng = (min, max) => min + (seed % 1000) / 1000 * (max - min);
+  const high3m = parseFloat(rng(8, 80).toFixed(2));
+  const dropFactor = 0.55 + (seed % 100) / 100 * 0.40; // -60% ~ -5% from high
+  const currentPrice = parseFloat((high3m * dropFactor).toFixed(2));
+  return { currentPrice, high3m, currency: 'USD', demo: true, error: null, lastUpdated: new Date().toISOString() };
+};
+
+/* ──────────────── Yahoo Finance fetch ──────────────── */
+const parseYahooJson = (json) => {
+  const result = json?.chart?.result?.[0];
+  if (!result) return null;
+  const meta = result.meta;
+  const highs = (result.indicators?.quote?.[0]?.high || []).filter(h => h != null && h > 0);
+  if (!highs.length || !meta?.regularMarketPrice) return null;
+  return {
+    currentPrice: meta.regularMarketPrice,
+    high3m: Math.max(...highs),
+    currency: meta.currency || 'USD',
+    demo: false,
+    error: null,
+    lastUpdated: new Date().toISOString(),
+  };
+};
+
+const fetchPrice = async (ticker) => {
+  const base = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=3mo`;
+
+  // Try multiple proxy/direct strategies
+  const attempts = [
+    // corsproxy.io — recommended, no URL encoding needed for this proxy
+    async () => {
+      const res = await fetch(`https://corsproxy.io/?${base}`, {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'x-requested-with': 'XMLHttpRequest' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return parseYahooJson(await res.json());
+    },
+    // allorigins — wraps response in {contents: "..."}
+    async () => {
+      const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(base)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const wrapper = await res.json();
+      return parseYahooJson(JSON.parse(wrapper.contents));
+    },
+    // Direct — works on some environments (e.g. native app webview, CORS-permissive)
+    async () => {
+      const res = await fetch(base, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return parseYahooJson(await res.json());
+    },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const result = await attempt();
+      if (result) return result;
+    } catch {}
+  }
+
+  // All failed → demo mode with mock data
+  return { ...genMockPrice(ticker), error: 'デモモード（株価取得不可）' };
+};
+
+/* ──────────────── Helpers ──────────────── */
+const dropPct = (cur, high) => (cur && high) ? ((cur - high) / high * 100) : null;
+const fmtPrice = (p, cur) => {
+  if (p == null) return '-';
+  const sym = cur === 'JPY' ? '¥' : '$';
+  return sym + (p < 10 ? p.toFixed(3) : p < 1000 ? p.toFixed(2) : p.toFixed(0));
+};
+const calcAvgCost = (purchases) => {
+  if (!purchases?.length) return null;
+  const totalVal = purchases.reduce((s, p) => s + p.price * p.shares, 0);
+  const totalShr = purchases.reduce((s, p) => s + p.shares, 0);
+  return totalShr > 0 ? totalVal / totalShr : null;
+};
+const calcStatus = (stock) => {
+  if (Object.values(stock.dangerSignals || {}).some(v => v)) return 'danger';
+  const f = stock.financials || {};
+  const runway = f.cash > 0 && f.annualLoss > 0 ? f.cash / f.annualLoss : null;
+  const step2 = runway >= 2;
+  if (step2 && f.revenueGrowing && f.hasContracts && f.noExcessiveIssuance) return 'good';
+  return 'warning';
+};
+
+/* ══════════════════════════════════════════
+   App
+══════════════════════════════════════════ */
+function App() {
+  const [data, setData] = useState(loadData);
+  const [tab, setTab] = useState('watchlist');
+  const [loading, setLoading] = useState({});
+  const [showAdd, setShowAdd] = useState(false);
+  const { stocks, priceData } = data;
+
+  const update = useCallback((fn) => {
+    setData(prev => { const next = fn(prev); saveData(next); return next; });
+  }, []);
+
+  const refreshPrices = useCallback(async (tickers) => {
+    const list = tickers ?? stocks.map(s => s.ticker);
+    if (!list.length) return;
+    setLoading(p => ({ ...p, ...Object.fromEntries(list.map(t => [t, true])) }));
+    await Promise.all(list.map(async (ticker) => {
+      const pd = await fetchPrice(ticker);
+      update(prev => ({ ...prev, priceData: { ...prev.priceData, [ticker]: pd } }));
+      setLoading(p => ({ ...p, [ticker]: false }));
+    }));
+  }, [stocks, update]);
+
+  useEffect(() => { if (stocks.length) refreshPrices(); }, []);
+
+  const addStock = (s) => {
+    const stock = {
+      id: genId(), ticker: s.ticker.toUpperCase().trim(),
+      name: s.name || s.ticker.toUpperCase().trim(),
+      type: s.type || 'core',
+      financials: { cash: +s.cash || 0, annualLoss: +s.annualLoss || 0, revenueGrowing: false, hasContracts: false, noExcessiveIssuance: false },
+      dangerSignals: { insolvency: false, auditConcern: false, excessiveIssuance: false, listingRisk: false },
+      purchases: [],
+    };
+    update(prev => ({ ...prev, stocks: [...prev.stocks, stock] }));
+    refreshPrices([stock.ticker]);
+    setShowAdd(false);
+  };
+  const delStock = (id) => {
+    if (!confirm('この銘柄を削除しますか？')) return;
+    update(prev => ({ ...prev, stocks: prev.stocks.filter(s => s.id !== id) }));
+  };
+  const updStock = (id, patch) => update(prev => ({
+    ...prev, stocks: prev.stocks.map(s => s.id === id ? { ...s, ...patch } : s)
+  }));
+  const addPurchase = (sid, p) => update(prev => ({
+    ...prev, stocks: prev.stocks.map(s =>
+      s.id === sid ? { ...s, purchases: [...s.purchases, { ...p, id: genId() }] } : s
+    )
+  }));
+  const delPurchase = (sid, pid) => update(prev => ({
+    ...prev, stocks: prev.stocks.map(s =>
+      s.id === sid ? { ...s, purchases: s.purchases.filter(p => p.id !== pid) } : s
+    )
+  }));
+
+  const alerts = stocks.flatMap(s => {
+    const pd = priceData[s.ticker];
+    const dp = dropPct(pd?.currentPrice, pd?.high3m);
+    if (dp == null) return [];
+    return ALERT_LEVELS.filter(l => dp <= -l.drop).map(l => ({ stock: s, level: l, dp, pd }));
+  });
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100 pb-20 max-w-lg mx-auto">
+      <Header alerts={alerts} onRefresh={() => refreshPrices()} />
+
+      {tab === 'watchlist' && (
+        <WatchList stocks={stocks} priceData={priceData} loading={loading}
+          onAdd={() => setShowAdd(true)} onDelete={delStock}
+          onUpdate={updStock} onRefresh={refreshPrices}
+          alerts={alerts} addPurchase={addPurchase} />
+      )}
+      {tab === 'portfolio' && <Portfolio stocks={stocks} priceData={priceData} />}
+      {tab === 'records' && <Records stocks={stocks} onAdd={addPurchase} onDelete={delPurchase} />}
+
+      <TabBar tab={tab} setTab={setTab} alertCount={alerts.length} />
+      {showAdd && <AddModal onAdd={addStock} onClose={() => setShowAdd(false)} />}
+    </div>
+  );
+}
+
+/* ──────────────── Header ──────────────── */
+function Header({ alerts, onRefresh }) {
+  return (
+    <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+      <div>
+        <h1 className="text-base font-bold text-blue-400 leading-tight">⚛️ 量子・宇宙株 監視</h1>
+        <p className="text-xs text-gray-500">段階的買い増し戦略ツール</p>
+      </div>
+      <button onClick={onRefresh}
+        className="bg-gray-800 active:bg-gray-700 text-gray-300 px-3 py-2 rounded-lg text-xs transition-colors">
+        🔄 更新
+      </button>
+    </div>
+  );
+}
+
+/* ──────────────── TabBar ──────────────── */
+function TabBar({ tab, setTab, alertCount }) {
+  const tabs = [
+    { id: 'watchlist', icon: '📊', label: '監視リスト' },
+    { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
+    { id: 'records',   icon: '📝', label: '買い増し記録' },
+  ];
+  return (
+    <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-gray-900 border-t border-gray-800 flex z-20">
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => setTab(t.id)}
+          className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 relative transition-colors ${tab === t.id ? 'text-blue-400' : 'text-gray-500'}`}>
+          <span className="text-xl">{t.icon}</span>
+          <span className="text-xs leading-none">{t.label}</span>
+          {t.id === 'watchlist' && alertCount > 0 && (
+            <span className="absolute top-1.5 right-6 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none font-bold">
+              {alertCount > 9 ? '9+' : alertCount}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   WatchList Tab
+══════════════════════════════════════════ */
+function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRefresh, alerts, addPurchase }) {
+  return (
+    <div className="p-3 space-y-3">
+      {alerts.length > 0 && (
+        <div className="bg-yellow-900/40 border border-yellow-700 rounded-xl p-3">
+          <p className="text-yellow-400 font-bold text-sm mb-2">🔔 買い増しアラート ({alerts.length}件)</p>
+          <div className="space-y-1">
+            {alerts.map((a, i) => (
+              <div key={i} className="flex justify-between text-xs text-yellow-300">
+                <span className="font-semibold">{a.stock.ticker}</span>
+                <span>高値比 {a.dp.toFixed(1)}%（-{a.level.drop}%ライン超え）</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={onAdd}
+        className="w-full bg-blue-600 active:bg-blue-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors">
+        ＋ 銘柄を追加
+      </button>
+
+      {stocks.length === 0 && (
+        <div className="text-center text-gray-600 py-16">
+          <p className="text-5xl mb-3">🚀</p>
+          <p className="text-sm">銘柄を追加して監視を始めましょう</p>
+        </div>
+      )}
+
+      {stocks.map(s => (
+        <StockCard key={s.id} stock={s} priceData={priceData[s.ticker]}
+          loading={loading[s.ticker]}
+          onDelete={() => onDelete(s.id)}
+          onUpdate={(p) => onUpdate(s.id, p)}
+          onRefresh={() => onRefresh([s.ticker])}
+          onAddPurchase={(p) => addPurchase(s.id, p)} />
+      ))}
+    </div>
+  );
+}
+
+/* ──────────────── StockCard ──────────────── */
+function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, onAddPurchase }) {
+  const [open, setOpen] = useState(false);
+  const [buyForm, setBuyForm] = useState(false);
+
+  const status = calcStatus(stock);
+  const dp = dropPct(priceData?.currentPrice, priceData?.high3m);
+  const avg = calcAvgCost(stock.purchases);
+  const f = stock.financials || {};
+  const runway = f.cash > 0 && f.annualLoss > 0 ? f.cash / f.annualLoss : null;
+
+  const borderColor = status === 'danger' ? 'border-red-600' : status === 'good' ? 'border-green-600' : 'border-yellow-600';
+  const bgColor = status === 'danger' ? 'bg-red-950/20' : status === 'good' ? 'bg-green-950/15' : 'bg-yellow-950/15';
+
+  const updF = (k, v) => onUpdate({ financials: { ...f, [k]: v } });
+  const togDanger = (k) => onUpdate({ dangerSignals: { ...stock.dangerSignals, [k]: !stock.dangerSignals[k] } });
+
+  return (
+    <div className={`rounded-xl border-2 ${borderColor} ${bgColor} overflow-hidden`}>
+      {/* Danger banner */}
+      {status === 'danger' && (
+        <div className="bg-red-700 px-4 py-2 flex items-center gap-2">
+          <span className="text-white font-bold text-sm">⛔ 危険シグナル — 買い増し停止・撤退を検討</span>
+        </div>
+      )}
+
+      <div className="p-4">
+        {/* Title row */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xl font-bold tracking-wide">{stock.ticker}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stock.type === 'core' ? 'bg-blue-900 text-blue-300' : 'bg-purple-900 text-purple-300'}`}>
+                {stock.type === 'core' ? 'コア' : 'サテライト'}
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                status === 'good' ? 'bg-green-900 text-green-300' :
+                status === 'danger' ? 'bg-red-900 text-red-300' : 'bg-yellow-900 text-yellow-300'
+              }`}>
+                {status === 'good' ? '✅ 良好' : status === 'danger' ? '❌ 危険' : '⚠️ 要確認'}
+              </span>
+            </div>
+            {stock.name !== stock.ticker && (
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{stock.name}</p>
+            )}
+          </div>
+          <div className="flex gap-3 shrink-0">
+            <button onClick={onRefresh} disabled={loading} className="text-gray-500 active:text-gray-200 text-base">
+              {loading ? '⏳' : '🔄'}
+            </button>
+            <button onClick={onDelete} className="text-gray-600 active:text-red-400 text-base">🗑️</button>
+          </div>
+        </div>
+
+        {/* Error / demo notice */}
+        {priceData?.error && !priceData?.currentPrice && (
+          <div className="mt-2 bg-red-950/50 border border-red-800 rounded-lg px-3 py-2 text-xs text-red-400">
+            ⚠️ {priceData.error}
+          </div>
+        )}
+        {priceData?.demo && priceData?.currentPrice && (
+          <div className="mt-2 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 flex items-center gap-2">
+            <span className="text-xs text-yellow-500 font-bold">🎭 デモモード</span>
+            <span className="text-xs text-gray-500">株価取得不可のため仮データで表示中</span>
+          </div>
+        )}
+
+        {/* Price tiles */}
+        {priceData?.currentPrice && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="bg-gray-800/70 rounded-xl p-3">
+              <p className="text-xs text-gray-500 mb-0.5">現在値{priceData.demo ? ' (仮)' : ''}</p>
+              <p className={`text-xl font-bold ${priceData.demo ? 'text-gray-400' : ''}`}>{fmtPrice(priceData.currentPrice, priceData.currency)}</p>
+              {priceData.lastUpdated && !priceData.demo && (
+                <p className="text-xs text-gray-600 mt-0.5">
+                  {new Date(priceData.lastUpdated).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
+            </div>
+            <div className="bg-gray-800/70 rounded-xl p-3">
+              <p className="text-xs text-gray-500 mb-0.5">3ヶ月高値比</p>
+              <p className={`text-xl font-bold ${
+                dp == null ? 'text-gray-500' :
+                dp <= -60 ? 'text-red-400' : dp <= -40 ? 'text-orange-400' :
+                dp <= -25 ? 'text-yellow-400' : dp <= -10 ? 'text-green-400' : 'text-green-300'
+              }`}>
+                {dp != null ? `${dp.toFixed(1)}%` : '-'}
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">高値 {fmtPrice(priceData.high3m, priceData.currency)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Alert level grid */}
+        {priceData?.high3m && (
+          <div className="mt-3">
+            <p className="text-xs text-gray-500 mb-1.5">▼ 買い増しライン &amp; 予算比率</p>
+            <div className="grid grid-cols-4 gap-1">
+              {ALERT_LEVELS.map(level => {
+                const target = priceData.high3m * (1 - level.drop / 100);
+                const reached = dp != null && dp <= -level.drop;
+                return (
+                  <div key={level.drop} className={`rounded-lg p-2 text-center border ${
+                    reached ? level.bgClass : 'bg-gray-800/60 border-gray-700'
+                  }`}>
+                    <p className={`text-xs font-bold ${reached ? level.colorClass : 'text-gray-400'}`}>
+                      {level.label}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${reached ? 'text-gray-200' : 'text-gray-400'}`}>
+                      {fmtPrice(target, priceData.currency)}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${reached ? 'text-gray-300' : 'text-gray-600'}`}>
+                      {level.ratio}%資金
+                    </p>
+                    {reached && <p className="text-xs mt-0.5">🔔</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Avg cost */}
+        {avg != null && (
+          <div className="mt-2 bg-gray-800/50 rounded-lg px-3 py-2 flex justify-between items-center">
+            <span className="text-xs text-gray-400">平均取得単価</span>
+            <span className="text-sm font-bold text-blue-300">{fmtPrice(avg, priceData?.currency)}</span>
+          </div>
+        )}
+
+        {/* Expand toggle */}
+        <button onClick={() => setOpen(!open)}
+          className="w-full mt-3 text-xs text-gray-600 active:text-gray-300 flex items-center justify-center gap-1 py-1">
+          {open ? '▲ 閉じる' : '▼ 詳細 / 財務チェック / 危険シグナル'}
+        </button>
+      </div>
+
+      {/* ── Expanded ── */}
+      {open && (
+        <div className="border-t border-gray-700/50 p-4 space-y-5">
+          {/* Type toggle */}
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">種別</p>
+            <div className="flex gap-2">
+              {['core', 'satellite'].map(t => (
+                <button key={t} onClick={() => onUpdate({ type: t })}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    stock.type === t
+                      ? (t === 'core' ? 'bg-blue-700 text-white' : 'bg-purple-700 text-white')
+                      : 'bg-gray-800 text-gray-500'
+                  }`}>
+                  {t === 'core' ? 'コア' : 'サテライト'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Financial checks */}
+          <div>
+            <p className="text-sm font-bold text-gray-200 mb-2">📋 財務チェック（Step 2）</p>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">手元資金（百万$/億円）</label>
+                  <input type="number" value={f.cash || ''} placeholder="例: 150"
+                    onChange={e => updF('cash', parseFloat(e.target.value) || 0)}
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">年間赤字額（同上）</label>
+                  <input type="number" value={f.annualLoss || ''} placeholder="例: 60"
+                    onChange={e => updF('annualLoss', parseFloat(e.target.value) || 0)}
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+              </div>
+
+              {runway != null && (
+                <div className={`rounded-lg px-3 py-2 text-sm font-medium ${runway >= 2 ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-yellow-900/50 text-yellow-400 border border-yellow-800'}`}>
+                  現金÷赤字 = <strong>{runway.toFixed(1)}年</strong>
+                  {runway >= 2 ? ' ✅ Step 2 クリア（2年以上）' : ' ⚠️ Step 2 未達（2年未満）'}
+                </div>
+              )}
+
+              {[
+                { k: 'revenueGrowing',       label: '売上が成長しているか' },
+                { k: 'hasContracts',         label: '政府・大手企業との契約があるか' },
+                { k: 'noExcessiveIssuance',  label: '増資を連発していないか' },
+              ].map(({ k, label }) => (
+                <div key={k} className="bg-gray-800/60 rounded-lg px-3 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-gray-300 flex-1 mr-3">{label}</span>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => updF(k, true)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${f[k] === true ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                      はい
+                    </button>
+                    <button onClick={() => updF(k, false)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${f[k] === false ? 'bg-red-800 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                      いいえ
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Danger signals */}
+          <div>
+            <p className="text-sm font-bold text-gray-200 mb-2">🚨 危険シグナル（Step 4）</p>
+            <div className="space-y-2">
+              {[
+                { k: 'insolvency',      label: '債務超過' },
+                { k: 'auditConcern',    label: '監査懸念（継続性疑義注記）' },
+                { k: 'excessiveIssuance', label: '増資連発（希薄化リスク）' },
+                { k: 'listingRisk',     label: '上場維持基準への接近' },
+              ].map(({ k, label }) => (
+                <div key={k} className="bg-gray-800/60 rounded-lg px-3 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-gray-300">{label}</span>
+                  <button onClick={() => togDanger(k)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${stock.dangerSignals[k] ? 'bg-red-600' : 'bg-gray-600'}`}>
+                    <span className={`toggle-thumb absolute top-0.5 w-5 h-5 bg-white rounded-full shadow ${stock.dangerSignals[k] ? 'translate-x-6' : 'translate-x-0.5'}`} style={{transition:'transform .2s'}} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Purchase form toggle */}
+          <button onClick={() => setBuyForm(!buyForm)}
+            className="w-full bg-gray-700 active:bg-gray-600 py-2.5 rounded-xl text-sm text-gray-300 transition-colors font-medium">
+            {buyForm ? '▲ 記録フォームを閉じる' : '＋ 今回の買い増しを記録'}
+          </button>
+          {buyForm && (
+            <PurchaseForm
+              currentPrice={priceData?.currentPrice} high3m={priceData?.high3m}
+              currency={priceData?.currency}
+              onAdd={(p) => { onAddPurchase(p); setBuyForm(false); }}
+              onCancel={() => setBuyForm(false)} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────── PurchaseForm ──────────────── */
+function PurchaseForm({ onAdd, onCancel, currentPrice, high3m, currency }) {
+  const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    price: currentPrice?.toFixed(currentPrice < 10 ? 3 : 2) || '',
+    shares: '',
+    note: '',
+  });
+  const dp = form.price && high3m ? ((parseFloat(form.price) - high3m) / high3m * 100).toFixed(1) : null;
+  const total = form.price && form.shares ? (parseFloat(form.price) * parseFloat(form.shares)).toFixed(2) : null;
+
+  return (
+    <div className="bg-gray-800/80 rounded-xl p-3 space-y-2.5 border border-gray-700">
+      <p className="text-sm font-bold text-gray-200">買い増し記録</p>
+      <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})}
+        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm" />
+      <div className="flex gap-2">
+        <input type="number" value={form.price} placeholder="購入価格"
+          onChange={e => setForm({...form, price: e.target.value})}
+          className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm" />
+        <input type="number" value={form.shares} placeholder="株数"
+          onChange={e => setForm({...form, shares: e.target.value})}
+          className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm" />
+      </div>
+      {(dp || total) && (
+        <div className="flex gap-3 text-xs text-gray-400">
+          {dp && <span>高値比: <strong className="text-yellow-400">{dp}%</strong></span>}
+          {total && <span>合計: <strong className="text-gray-200">{currency === 'JPY' ? '¥' : '$'}{total}</strong></span>}
+        </div>
+      )}
+      <input type="text" value={form.note} placeholder="メモ（任意）"
+        onChange={e => setForm({...form, note: e.target.value})}
+        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm" />
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 bg-gray-600 py-2.5 rounded-lg text-sm">キャンセル</button>
+        <button
+          disabled={!form.price || !form.shares}
+          onClick={() => onAdd({ date: form.date, price: parseFloat(form.price), shares: parseFloat(form.shares), dropRate: dp ? parseFloat(dp) : null, note: form.note })}
+          className="flex-1 bg-blue-600 active:bg-blue-700 disabled:opacity-40 py-2.5 rounded-lg text-sm font-semibold">
+          記録する
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────── AddModal ──────────────── */
+function AddModal({ onAdd, onClose }) {
+  const [form, setForm] = useState({ ticker: '', name: '', type: 'core', cash: '', annualLoss: '' });
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-end z-30" onClick={onClose}>
+      <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg mx-auto p-6 max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">銘柄を追加</h2>
+          <button onClick={onClose} className="text-gray-500 text-xl">✕</button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-500">ティッカーシンボル（必須）</label>
+            <input type="text" value={form.ticker} placeholder="例: IONQ, RKLB, QMCO"
+              onChange={e => setForm({...form, ticker: e.target.value.toUpperCase()})}
+              className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-base uppercase font-bold tracking-wider focus:outline-none focus:border-blue-500"
+              autoFocus autoCapitalize="characters" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">銘柄名（任意）</label>
+            <input type="text" value={form.name} placeholder="例: IonQ Inc."
+              onChange={e => setForm({...form, name: e.target.value})}
+              className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">種別</label>
+            <div className="flex gap-2 mt-1">
+              {['core','satellite'].map(t => (
+                <button key={t} onClick={() => setForm({...form, type: t})}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    form.type === t ? (t==='core' ? 'bg-blue-700 text-white' : 'bg-purple-700 text-white') : 'bg-gray-800 text-gray-400'
+                  }`}>
+                  {t === 'core' ? 'コア（主力）' : 'サテライト（補完）'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-gray-800 pt-3">
+            <p className="text-xs text-gray-500 mb-2">財務情報（後から編集できます）</p>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500">手元資金（百万$）</label>
+                <input type="number" value={form.cash} placeholder="例: 150"
+                  onChange={e => setForm({...form, cash: e.target.value})}
+                  className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-500">年間赤字額（百万$）</label>
+                <input type="number" value={form.annualLoss} placeholder="例: 60"
+                  onChange={e => setForm({...form, annualLoss: e.target.value})}
+                  className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button onClick={onClose} className="flex-1 bg-gray-700 py-3 rounded-xl text-sm">キャンセル</button>
+            <button onClick={() => onAdd(form)} disabled={!form.ticker.trim()}
+              className="flex-1 bg-blue-600 active:bg-blue-700 disabled:opacity-40 py-3 rounded-xl text-sm font-bold">
+              追加する
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   Portfolio Tab
+══════════════════════════════════════════ */
+function Portfolio({ stocks, priceData }) {
+  const cores = stocks.filter(s => s.type === 'core');
+  const sats  = stocks.filter(s => s.type === 'satellite');
+  const n = stocks.length;
+  const coreRatio = n ? cores.length / n * 100 : 0;
+  const satRatio  = n ? sats.length  / n * 100 : 0;
+  const dev = Math.abs(coreRatio - TARGET_CORE);
+
+  return (
+    <div className="p-4 space-y-4">
+      <h2 className="text-lg font-bold">ポートフォリオ</h2>
+
+      {n === 0 ? (
+        <div className="text-center text-gray-600 py-16">
+          <p className="text-5xl mb-3">🥧</p>
+          <p className="text-sm">銘柄を追加してください</p>
+        </div>
+      ) : (
+        <>
+          {/* Donut */}
+          <div className="bg-gray-900 rounded-2xl p-4">
+            <p className="text-sm text-gray-400 mb-3">コア / サテライト比率（銘柄数ベース）</p>
+            <DonutChart coreRatio={coreRatio} satRatio={satRatio} />
+            <div className="flex justify-center gap-8 mt-4">
+              <div className="text-center">
+                <div className="flex items-center gap-1.5 justify-center mb-1">
+                  <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
+                  <span className="text-sm text-gray-300">コア</span>
+                </div>
+                <p className="text-2xl font-bold text-blue-400">{coreRatio.toFixed(0)}%</p>
+                <p className="text-xs text-gray-500">{cores.length} 銘柄</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center gap-1.5 justify-center mb-1">
+                  <span className="w-3 h-3 rounded-full bg-purple-500 inline-block" />
+                  <span className="text-sm text-gray-300">サテライト</span>
+                </div>
+                <p className="text-2xl font-bold text-purple-400">{satRatio.toFixed(0)}%</p>
+                <p className="text-xs text-gray-500">{sats.length} 銘柄</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Deviation */}
+          <div className={`rounded-xl p-3 border ${dev > 10 ? 'bg-yellow-900/30 border-yellow-700' : 'bg-green-900/20 border-green-800'}`}>
+            <p className={`font-semibold text-sm ${dev > 10 ? 'text-yellow-400' : 'text-green-400'}`}>
+              {dev > 10 ? '⚠️ 目標比率からの乖離あり' : '✅ 目標比率内'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              目標: コア {TARGET_CORE}% / サテライト {100 - TARGET_CORE}%　→　乖離 {dev.toFixed(0)}pt
+            </p>
+          </div>
+
+          {/* Stock rows */}
+          {[{ label: 'コア銘柄', list: cores, color: 'text-blue-400' },
+            { label: 'サテライト銘柄', list: sats, color: 'text-purple-400' }].map(({ label, list, color }) => (
+            <div key={label}>
+              <p className={`text-sm font-bold ${color} mb-2`}>{label}</p>
+              {list.length === 0
+                ? <p className="text-gray-600 text-sm px-1">なし</p>
+                : list.map(s => <PortfolioRow key={s.id} stock={s} priceData={priceData[s.ticker]} />)
+              }
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PortfolioRow({ stock, priceData }) {
+  const avg = calcAvgCost(stock.purchases);
+  const totalShares = stock.purchases?.reduce((s, p) => s + p.shares, 0) || 0;
+  const curVal  = totalShares && priceData?.currentPrice ? totalShares * priceData.currentPrice : null;
+  const costVal = totalShares && avg ? totalShares * avg : null;
+  const pnl     = curVal && costVal ? curVal - costVal : null;
+  const pnlPct  = pnl != null && costVal ? pnl / costVal * 100 : null;
+  const status  = calcStatus(stock);
+
+  return (
+    <div className={`bg-gray-800/60 rounded-xl px-3 py-2.5 mb-1.5 flex items-center justify-between border ${
+      status === 'danger' ? 'border-red-800' : status === 'good' ? 'border-green-900' : 'border-yellow-900'
+    }`}>
+      <div>
+        <p className="font-bold text-sm">{stock.ticker}</p>
+        {totalShares > 0 && <p className="text-xs text-gray-500">{totalShares} 株 • 平均 {fmtPrice(avg, priceData?.currency)}</p>}
+      </div>
+      <div className="text-right">
+        {priceData?.currentPrice && <p className="text-sm font-semibold">{fmtPrice(priceData.currentPrice, priceData.currency)}</p>}
+        {pnlPct != null && (
+          <p className={`text-xs font-bold ${pnlPct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────── SVG Donut ──────────────── */
+function DonutChart({ coreRatio, satRatio }) {
+  const r = 58, cx = 80, cy = 80, sw = 22;
+  const circ = 2 * Math.PI * r;
+  const coreDash = coreRatio / 100 * circ;
+  const satDash  = satRatio  / 100 * circ;
+  return (
+    <svg viewBox="0 0 160 160" className="w-36 h-36 mx-auto" style={{transform:'rotate(-90deg)'}}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1F2937" strokeWidth={sw} />
+      {satDash > 0 && (
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#7C3AED" strokeWidth={sw}
+          strokeDasharray={`${satDash} ${circ}`} strokeDashoffset={-coreDash} strokeLinecap="round" />
+      )}
+      {coreDash > 0 && (
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#3B82F6" strokeWidth={sw}
+          strokeDasharray={`${coreDash} ${circ}`} strokeDashoffset={0} strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
+
+/* ══════════════════════════════════════════
+   Records Tab
+══════════════════════════════════════════ */
+function Records({ stocks, onAdd, onDelete }) {
+  const [filter, setFilter] = useState('all');
+  const [selId, setSelId] = useState('');
+  const [showForm, setShowForm] = useState(false);
+
+  const targeted = filter === 'all' ? stocks : stocks.filter(s => s.id === filter);
+
+  return (
+    <div className="p-4 space-y-4">
+      <h2 className="text-lg font-bold">買い増し記録</h2>
+
+      {/* Filter pills */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <button onClick={() => setFilter('all')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 ${filter === 'all' ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
+          すべて
+        </button>
+        {stocks.map(s => (
+          <button key={s.id} onClick={() => setFilter(s.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 ${filter === s.id ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
+            {s.ticker}
+          </button>
+        ))}
+      </div>
+
+      {/* Quick add */}
+      {stocks.length > 0 && (
+        <div>
+          <select value={selId}
+            onChange={e => { setSelId(e.target.value); setShowForm(!!e.target.value); }}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none">
+            <option value="">＋ 銘柄を選んで記録する…</option>
+            {stocks.map(s => <option key={s.id} value={s.id}>{s.ticker} — {s.name}</option>)}
+          </select>
+          {showForm && selId && (
+            <div className="mt-2">
+              <PurchaseForm
+                onAdd={(p) => { onAdd(selId, p); setShowForm(false); setSelId(''); }}
+                onCancel={() => { setShowForm(false); setSelId(''); }} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Stock sections */}
+      {targeted.map(s => {
+        const ps = s.purchases || [];
+        if (!ps.length) return null;
+        const totalShr = ps.reduce((a, p) => a + p.shares, 0);
+        const avg = calcAvgCost(ps);
+        const sorted = [...ps].sort((a, b) => new Date(b.date) - new Date(a.date));
+        return (
+          <div key={s.id} className="bg-gray-900 rounded-2xl p-4">
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <p className="font-bold text-lg">{s.ticker}</p>
+                <p className="text-xs text-gray-500">{totalShr} 株保有</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">平均取得単価</p>
+                <p className="text-lg font-bold text-blue-400">{fmtPrice(avg, 'USD')}</p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {sorted.map(p => (
+                <div key={p.id} className="bg-gray-800/60 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{p.date}</span>
+                      {p.dropRate != null && (
+                        <span className="text-xs text-yellow-500 font-medium">高値比 {p.dropRate}%</span>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold">
+                      ${p.price.toFixed(p.price < 10 ? 3 : 2)} × {p.shares} 株
+                      <span className="text-xs text-gray-500 ml-2">= ${(p.price * p.shares).toFixed(2)}</span>
+                    </p>
+                    {p.note && <p className="text-xs text-gray-500 mt-0.5 truncate">{p.note}</p>}
+                  </div>
+                  <button onClick={() => { if(confirm('削除しますか？')) onDelete(s.id, p.id); }}
+                    className="text-gray-600 active:text-red-400 shrink-0 text-sm">🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {targeted.every(s => !s.purchases?.length) && (
+        <div className="text-center text-gray-600 py-16">
+          <p className="text-5xl mb-3">📝</p>
+          <p className="text-sm">記録がありません</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────── Mount ──────────────── */
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
