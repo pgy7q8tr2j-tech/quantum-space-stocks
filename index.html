@@ -44,6 +44,89 @@ const saveData = (d) => {
 };
 const genId = () => Math.random().toString(36).slice(2, 11);
 
+/* ──────────────── Sparkline Chart ──────────────── */
+function SparklineChart({ closes, high3m, currentPrice, currency }) {
+  if (!closes || closes.length < 2) return (
+    <div className="flex items-center justify-center h-24 text-gray-600 text-xs">データなし</div>
+  );
+
+  const W = 600, H = 120, PAD = { t: 10, b: 28, l: 48, r: 16 };
+  const innerW = W - PAD.l - PAD.r;
+  const innerH = H - PAD.t - PAD.b;
+
+  const minP = Math.min(...closes);
+  const maxP = Math.max(...closes);
+  const range = maxP - minP || 1;
+
+  const toX = (i) => PAD.l + (i / (closes.length - 1)) * innerW;
+  const toY = (v) => PAD.t + innerH - ((v - minP) / range) * innerH;
+
+  const pts = closes.map((c, i) => `${toX(i).toFixed(1)},${toY(c).toFixed(1)}`).join(' ');
+
+  // Alert level lines within visible range
+  const alertLines = ALERT_LEVELS.map(l => ({
+    ...l, price: high3m * (1 - l.drop / 100)
+  })).filter(l => l.price >= minP && l.price <= maxP);
+
+  const sym = currency === 'JPY' ? '¥' : '$';
+  const fmt = (v) => v >= 1000 ? `${sym}${(v/1000).toFixed(1)}k` : `${sym}${v.toFixed(v < 10 ? 2 : 1)}`;
+
+  // Line color based on drop from high
+  const dp = currentPrice && high3m ? (currentPrice - high3m) / high3m * 100 : 0;
+  const lineColor = dp <= -60 ? '#EF4444' : dp <= -40 ? '#F97316' : dp <= -25 ? '#EAB308' : '#22C55E';
+
+  return (
+    <div className="w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height: '120px'}}>
+        {/* Grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map(t => {
+          const y = PAD.t + innerH * (1 - t);
+          const v = minP + range * t;
+          return (
+            <g key={t}>
+              <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#374151" strokeWidth="0.5" />
+              <text x={PAD.l - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#6B7280">{fmt(v)}</text>
+            </g>
+          );
+        })}
+
+        {/* Alert level horizontal lines */}
+        {alertLines.map(l => {
+          const y = toY(l.price);
+          return (
+            <g key={l.drop}>
+              <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke={l.colorClass.includes('yellow') ? '#EAB308' : l.colorClass.includes('orange') ? '#F97316' : '#EF4444'} strokeWidth="0.8" strokeDasharray="4,3" opacity="0.6" />
+              <text x={W - PAD.r + 2} y={y + 3} fontSize="8" fill="#9CA3AF">-{l.drop}%</text>
+            </g>
+          );
+        })}
+
+        {/* Current price line */}
+        {currentPrice >= minP && currentPrice <= maxP && (
+          <line x1={PAD.l} y1={toY(currentPrice)} x2={W - PAD.r} y2={toY(currentPrice)}
+            stroke={lineColor} strokeWidth="0.8" strokeDasharray="2,2" opacity="0.8" />
+        )}
+
+        {/* Price line */}
+        <polyline points={pts} fill="none" stroke={lineColor} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+
+        {/* Last point dot */}
+        <circle cx={toX(closes.length - 1)} cy={toY(closes[closes.length - 1])}
+          r="3" fill={lineColor} stroke="#111827" strokeWidth="1.5" />
+
+        {/* X-axis labels (start / mid / end) */}
+        {[0, Math.floor(closes.length / 2), closes.length - 1].map((i, idx) => (
+          <text key={idx} x={toX(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#6B7280">
+            {idx === 0 ? '3ヶ月前' : idx === 1 ? '1.5ヶ月前' : '現在'}
+          </text>
+        ))}
+      </svg>
+
+      {/* TradingView link */}
+    </div>
+  );
+}
+
 /* ──────────────── Mock data (demo mode) ──────────────── */
 const mockSeed = (ticker) => {
   let h = 0;
@@ -72,7 +155,7 @@ const fetchPrice = async (ticker) => {
     if (res.ok) {
       const d = await res.json();
       if (d.currentPrice && d.high3m) {
-        return { currentPrice: d.currentPrice, high3m: d.high3m, currency: d.currency || 'USD', demo: false, error: null, lastUpdated: new Date().toISOString() };
+        return { currentPrice: d.currentPrice, high3m: d.high3m, currency: d.currency || 'USD', closes: d.closes || [], demo: false, error: null, lastUpdated: new Date().toISOString() };
       }
     }
   } catch {}
@@ -360,6 +443,7 @@ function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRe
 function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, onAddPurchase }) {
   const [open, setOpen] = useState(false);
   const [buyForm, setBuyForm] = useState(false);
+  const [showChart, setShowChart] = useState(false);
 
   const status = calcStatus(stock);
   const dp = dropPct(priceData?.currentPrice, priceData?.high3m);
@@ -486,9 +570,41 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
           </div>
         )}
 
+        {/* Chart toggle button */}
+        <button onClick={() => setShowChart(!showChart)}
+          className={`w-full mt-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${showChart ? 'bg-blue-900/60 text-blue-300 border border-blue-700' : 'bg-gray-800/60 text-gray-400 hover:text-gray-200'}`}>
+          📈 {showChart ? 'チャートを閉じる' : '3ヶ月チャートを表示'}
+        </button>
+
+        {/* Inline sparkline chart */}
+        {showChart && (
+          <div className="mt-2 bg-gray-900 rounded-xl p-3 border border-gray-700/50">
+            {priceData?.closes?.length > 1 ? (
+              <>
+                <SparklineChart
+                  closes={priceData.closes}
+                  high3m={priceData.high3m}
+                  currentPrice={priceData.currentPrice}
+                  currency={priceData.currency}
+                  ticker={stock.ticker}
+                />
+                <a href={`https://finance.yahoo.com/chart/${stock.ticker}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="block text-center text-xs text-blue-500 hover:text-blue-400 mt-2 py-1">
+                  🔗 Yahoo Finance で詳細チャートを見る →
+                </a>
+              </>
+            ) : priceData?.demo ? (
+              <p className="text-center text-xs text-gray-500 py-4">🎭 デモモード：チャートデータなし</p>
+            ) : (
+              <p className="text-center text-xs text-gray-500 py-4">🔄 更新ボタンを押してデータを取得してください</p>
+            )}
+          </div>
+        )}
+
         {/* Expand toggle */}
         <button onClick={() => setOpen(!open)}
-          className="w-full mt-3 text-xs text-gray-600 active:text-gray-300 flex items-center justify-center gap-1 py-1">
+          className="w-full mt-2 text-xs text-gray-600 active:text-gray-300 flex items-center justify-center gap-1 py-1">
           {open ? '▲ 閉じる' : '▼ 詳細 / 財務チェック / 危険シグナル'}
         </button>
       </div>

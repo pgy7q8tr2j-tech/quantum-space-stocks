@@ -7,7 +7,6 @@ export default async function handler(req, res) {
 
   const symbol = ticker.toUpperCase().trim();
 
-  // Try multiple Yahoo Finance endpoints server-side (no CORS here)
   const endpoints = [
     `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`,
     `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`,
@@ -30,15 +29,29 @@ export default async function handler(req, res) {
       const result = json?.chart?.result?.[0];
       if (!result) continue;
 
-      const meta = result.meta;
-      const highs = (result.indicators?.quote?.[0]?.high || []).filter(h => h != null && h > 0);
+      const meta   = result.meta;
+      const quote  = result.indicators?.quote?.[0] || {};
+      const highs  = (quote.high  || []).filter(h => h != null && h > 0);
+      const closes = (quote.close || []).filter(c => c != null && c > 0);
+      const timestamps = (result.timestamp || []);
+
       if (!highs.length || !meta?.regularMarketPrice) continue;
+
+      // Build OHLC points aligned with timestamps
+      const points = timestamps.map((ts, i) => ({
+        t: ts * 1000,
+        c: quote.close?.[i] ?? null,
+        h: quote.high?.[i]  ?? null,
+        l: quote.low?.[i]   ?? null,
+      })).filter(p => p.c != null);
 
       return res.status(200).json({
         currentPrice: meta.regularMarketPrice,
-        high3m: Math.max(...highs),
-        currency: meta.currency || 'USD',
-        symbol: meta.symbol || symbol,
+        high3m:       Math.max(...highs),
+        currency:     meta.currency || 'USD',
+        symbol:       meta.symbol || symbol,
+        closes:       closes,          // for sparkline
+        points:       points,          // {t,c,h,l} array
       });
     } catch {}
   }
