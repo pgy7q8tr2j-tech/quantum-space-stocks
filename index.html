@@ -54,68 +54,68 @@ const genMockPrice = (ticker) => {
   const seed = mockSeed(ticker);
   const rng = (min, max) => min + (seed % 1000) / 1000 * (max - min);
   const high3m = parseFloat(rng(8, 80).toFixed(2));
-  const dropFactor = 0.55 + (seed % 100) / 100 * 0.40; // -60% ~ -5% from high
+  const dropFactor = 0.55 + (seed % 100) / 100 * 0.40;
   const currentPrice = parseFloat((high3m * dropFactor).toFixed(2));
   return { currentPrice, high3m, currency: 'USD', demo: true, error: null, lastUpdated: new Date().toISOString() };
 };
 
-/* ──────────────── Yahoo Finance fetch ──────────────── */
-const parseYahooJson = (json) => {
-  const result = json?.chart?.result?.[0];
-  if (!result) return null;
-  const meta = result.meta;
-  const highs = (result.indicators?.quote?.[0]?.high || []).filter(h => h != null && h > 0);
-  if (!highs.length || !meta?.regularMarketPrice) return null;
-  return {
-    currentPrice: meta.regularMarketPrice,
-    high3m: Math.max(...highs),
-    currency: meta.currency || 'USD',
-    demo: false,
-    error: null,
-    lastUpdated: new Date().toISOString(),
-  };
-};
-
+/* ──────────────── Stock price fetch ──────────────── */
 const fetchPrice = async (ticker) => {
-  const base = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=3mo`;
+  const symbol = ticker.toUpperCase().trim();
 
-  // Try multiple proxy/direct strategies
-  const attempts = [
-    // corsproxy.io — recommended, no URL encoding needed for this proxy
-    async () => {
-      const res = await fetch(`https://corsproxy.io/?${base}`, {
-        signal: AbortSignal.timeout(8000),
-        headers: { 'x-requested-with': 'XMLHttpRequest' },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return parseYahooJson(await res.json());
-    },
-    // allorigins — wraps response in {contents: "..."}
-    async () => {
-      const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(base)}`, {
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // 1st: Vercel serverless proxy (same-origin, no CORS) — works on qspace-deploy.vercel.app
+  try {
+    const ctl = new AbortController();
+    const tid = setTimeout(() => ctl.abort(), 8000);
+    const res = await fetch(`/api/price?ticker=${symbol}`, { signal: ctl.signal });
+    clearTimeout(tid);
+    if (res.ok) {
+      const d = await res.json();
+      if (d.currentPrice && d.high3m) {
+        return { currentPrice: d.currentPrice, high3m: d.high3m, currency: d.currency || 'USD', demo: false, error: null, lastUpdated: new Date().toISOString() };
+      }
+    }
+  } catch {}
+
+  // 2nd: corsproxy.io
+  try {
+    const base = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
+    const ctl = new AbortController();
+    const tid = setTimeout(() => ctl.abort(), 8000);
+    const res = await fetch(`https://corsproxy.io/?${base}`, { signal: ctl.signal, headers: { 'x-requested-with': 'XMLHttpRequest' } });
+    clearTimeout(tid);
+    if (res.ok) {
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      const meta = result?.meta;
+      const highs = (result?.indicators?.quote?.[0]?.high || []).filter(h => h != null && h > 0);
+      if (highs.length && meta?.regularMarketPrice) {
+        return { currentPrice: meta.regularMarketPrice, high3m: Math.max(...highs), currency: meta.currency || 'USD', demo: false, error: null, lastUpdated: new Date().toISOString() };
+      }
+    }
+  } catch {}
+
+  // 3rd: allorigins
+  try {
+    const base = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
+    const ctl = new AbortController();
+    const tid = setTimeout(() => ctl.abort(), 8000);
+    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(base)}`, { signal: ctl.signal });
+    clearTimeout(tid);
+    if (res.ok) {
       const wrapper = await res.json();
-      return parseYahooJson(JSON.parse(wrapper.contents));
-    },
-    // Direct — works on some environments (e.g. native app webview, CORS-permissive)
-    async () => {
-      const res = await fetch(base, { signal: AbortSignal.timeout(6000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return parseYahooJson(await res.json());
-    },
-  ];
+      const json = JSON.parse(wrapper.contents);
+      const result = json?.chart?.result?.[0];
+      const meta = result?.meta;
+      const highs = (result?.indicators?.quote?.[0]?.high || []).filter(h => h != null && h > 0);
+      if (highs.length && meta?.regularMarketPrice) {
+        return { currentPrice: meta.regularMarketPrice, high3m: Math.max(...highs), currency: meta.currency || 'USD', demo: false, error: null, lastUpdated: new Date().toISOString() };
+      }
+    }
+  } catch {}
 
-  for (const attempt of attempts) {
-    try {
-      const result = await attempt();
-      if (result) return result;
-    } catch {}
-  }
-
-  // All failed → demo mode with mock data
-  return { ...genMockPrice(ticker), error: 'デモモード（株価取得不可）' };
+  // All failed → demo mode
+  return { ...genMockPrice(symbol), error: 'デモモード（株価取得不可）' };
 };
 
 /* ──────────────── Helpers ──────────────── */
