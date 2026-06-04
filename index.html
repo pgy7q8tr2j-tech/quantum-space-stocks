@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>⚛️ 量子・宇宙株 監視</title>
+  <title>株式監視</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -328,18 +328,17 @@ function App() {
       {/* ── Left Sidebar (desktop) ── */}
       <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-gray-800 bg-gray-900 sticky top-0 h-screen z-20">
         <div className="px-4 py-4 border-b border-gray-800">
-          <h1 className="text-sm font-bold text-blue-400 leading-tight">⚛️ 量子・宇宙株 監視</h1>
+          <h1 className="text-sm font-bold text-blue-400 leading-tight">株式監視</h1>
           <p className="text-xs text-gray-500 mt-0.5">段階的買い増し戦略ツール</p>
         </div>
         <nav className="flex-1 px-3 pt-3 space-y-1">
           {[
-            { id: 'watchlist', icon: '📊', label: '監視リスト' },
-            { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
-            { id: 'records',   icon: '📝', label: '買い増し記録' },
+            { id: 'watchlist', label: '監視リスト' },
+            { id: 'portfolio', label: 'ポートフォリオ' },
+            { id: 'records',   label: '買い増し記録' },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors w-full text-left ${tab === t.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'}`}>
-              <span className="text-base">{t.icon}</span>
               {t.label}
               {t.id === 'watchlist' && alerts.length > 0 && (
                 <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0">
@@ -353,15 +352,15 @@ function App() {
         <div className="px-3 pb-4 space-y-2">
           <button onClick={() => refreshPrices()}
             className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-sm font-medium transition-colors">
-            🔄 株価を更新
+            株価を更新
           </button>
           <div className="flex gap-2">
             <button onClick={exportData}
               className="flex-1 flex items-center justify-center gap-1 bg-blue-900/60 hover:bg-blue-800/60 text-blue-300 py-2 rounded-xl text-xs font-medium transition-colors">
-              📤 エクスポート
+              エクスポート
             </button>
             <label className="flex-1 flex items-center justify-center gap-1 bg-green-900/60 hover:bg-green-800/60 text-green-300 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer">
-              📥 インポート
+              インポート
               <input type="file" accept=".json" onChange={importData} className="hidden" />
             </label>
           </div>
@@ -371,19 +370,19 @@ function App() {
 
       {/* ── Mobile header ── */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-gray-900 border-b border-gray-800 px-3 py-2 flex items-center justify-between z-10 h-14">
-        <h1 className="text-sm font-bold text-blue-400">⚛️ 量子・宇宙株 監視</h1>
+        <h1 className="text-sm font-bold text-blue-400">株式監視</h1>
         <div className="flex items-center gap-1.5">
           <button onClick={exportData}
             className="bg-blue-900/60 active:bg-blue-800 text-blue-300 px-2 py-1.5 rounded-lg text-xs">
-            📤
+            出力
           </button>
           <label className="bg-green-900/60 active:bg-green-800 text-green-300 px-2 py-1.5 rounded-lg text-xs cursor-pointer">
-            📥
+            入力
             <input type="file" accept=".json" onChange={importData} className="hidden" />
           </label>
           <button onClick={() => refreshPrices()}
             className="bg-gray-800 active:bg-gray-700 text-gray-300 px-2.5 py-1.5 rounded-lg text-xs">
-            🔄
+            更新
           </button>
         </div>
       </div>
@@ -412,16 +411,15 @@ function App() {
 /* ──────────────── TabBar (mobile only) ──────────────── */
 function TabBar({ tab, setTab, alertCount }) {
   const tabs = [
-    { id: 'watchlist', icon: '📊', label: '監視リスト' },
-    { id: 'portfolio', icon: '🥧', label: 'ポートフォリオ' },
-    { id: 'records',   icon: '📝', label: '買い増し記録' },
+    { id: 'watchlist', label: '監視リスト' },
+    { id: 'portfolio', label: 'ポートフォリオ' },
+    { id: 'records',   label: '買い増し記録' },
   ];
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 flex z-20">
       {tabs.map(t => (
         <button key={t.id} onClick={() => setTab(t.id)}
           className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 relative transition-colors ${tab === t.id ? 'text-blue-400' : 'text-gray-500'}`}>
-          <span className="text-xl">{t.icon}</span>
           <span className="text-xs leading-none">{t.label}</span>
           {t.id === 'watchlist' && alertCount > 0 && (
             <span className="absolute top-1.5 right-6 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none font-bold">
@@ -442,7 +440,7 @@ function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRe
     <div className="p-3 md:p-6 space-y-3">
       {alerts.length > 0 && (
         <div className="bg-yellow-900/40 border border-yellow-700 rounded-xl p-3">
-          <p className="text-yellow-400 font-bold text-sm mb-2">🔔 買い増しアラート ({alerts.length}件)</p>
+          <p className="text-yellow-400 font-bold text-sm mb-2">買い増しアラート ({alerts.length}件)</p>
           <div className="space-y-1">
             {alerts.map((a, i) => (
               <div key={i} className="flex justify-between text-xs text-yellow-300">
@@ -461,7 +459,6 @@ function WatchList({ stocks, priceData, loading, onAdd, onDelete, onUpdate, onRe
 
       {stocks.length === 0 && (
         <div className="text-center text-gray-600 py-16">
-          <p className="text-5xl mb-3">🚀</p>
           <p className="text-sm">銘柄を追加して監視を始めましょう</p>
         </div>
       )}
@@ -531,8 +528,8 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
             )}
           </div>
           <div className="flex gap-2 shrink-0">
-            <button onClick={onRefresh} disabled={loading} className="text-gray-500 active:text-gray-300 text-sm">{loading ? '⏳' : '🔄'}</button>
-            <button onClick={onDelete} className="text-gray-600 active:text-red-400 text-sm">🗑️</button>
+            <button onClick={onRefresh} disabled={loading} className="text-gray-500 active:text-gray-300 text-xs">{loading ? '...' : '更新'}</button>
+            <button onClick={onDelete} className="text-gray-600 active:text-red-400 text-xs">削除</button>
           </div>
         </div>
 
@@ -560,9 +557,9 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
 
         {/* Error notice */}
         {priceData?.error && !priceData?.currentPrice && (
-          <p className="text-xs text-red-400 mb-2">⚠️ {priceData.error}</p>
+          <p className="text-xs text-red-400 mb-2">{priceData.error}</p>
         )}
-        {priceData?.demo && <p className="text-xs text-yellow-600 mb-2">🎭 デモ価格</p>}
+        {priceData?.demo && <p className="text-xs text-yellow-600 mb-2">デモ価格</p>}
 
         {/* 買い増しライン — 横スクロール可能な行形式 */}
         {priceData?.high3m && (
@@ -579,7 +576,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
                     <p className={`text-xs font-bold leading-none ${reached ? level.colorClass : 'text-gray-500'}`}>{level.label}</p>
                     <p className={`text-xs leading-none mt-1 font-medium ${reached ? 'text-white' : 'text-gray-400'}`}>{fmtPrice(target, priceData.currency)}</p>
                     <p className={`text-xs leading-none mt-0.5 ${reached ? 'text-gray-300' : 'text-gray-600'}`}>{level.ratio}%</p>
-                    {reached && <p className="text-xs leading-none mt-0.5">🔔</p>}
+                    {reached && <p className="text-xs leading-none mt-0.5 text-yellow-400">!</p>}
                   </div>
                 );
               })}
@@ -618,7 +615,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
                 className={`flex-1 py-1 text-xs rounded font-medium transition-colors ${
                   chartRange === p.v ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'
                 }`}>
-                {p.label}{p.rec ? '★' : ''}
+                {p.label}
               </button>
             ))}
           </div>
@@ -635,7 +632,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
             />
           ) : (
             <div className="flex items-center justify-center h-20 text-gray-600 text-xs">
-              {priceData?.demo ? '🎭 デモモード（チャートデータなし）' : 'データなし — 🔄更新してください'}
+              {priceData?.demo ? 'デモモード（チャートデータなし）' : 'データなし — 更新してください'}
             </div>
           )}
           <a href={`https://finance.yahoo.com/chart/${stock.ticker}`}
@@ -674,7 +671,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
 
           {/* Financial checks */}
           <div>
-            <p className="text-sm font-bold text-gray-200 mb-2">📋 財務チェック（Step 2）</p>
+            <p className="text-sm font-bold text-gray-200 mb-2">財務チェック（Step 2）</p>
             <div className="space-y-2">
               <div className="flex gap-2">
                 <div className="flex-1">
@@ -694,7 +691,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
               {runway != null && (
                 <div className={`rounded-lg px-3 py-2 text-sm font-medium ${runway >= 2 ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-yellow-900/50 text-yellow-400 border border-yellow-800'}`}>
                   現金÷赤字 = <strong>{runway.toFixed(1)}年</strong>
-                  {runway >= 2 ? ' ✅ Step 2 クリア（2年以上）' : ' ⚠️ Step 2 未達（2年未満）'}
+                  {runway >= 2 ? ' Step 2 クリア（2年以上）' : ' Step 2 未達（2年未満）'}
                 </div>
               )}
 
@@ -722,7 +719,7 @@ function StockCard({ stock, priceData, loading, onDelete, onUpdate, onRefresh, o
 
           {/* Danger signals */}
           <div>
-            <p className="text-sm font-bold text-gray-200 mb-2">🚨 危険シグナル（Step 4）</p>
+            <p className="text-sm font-bold text-gray-200 mb-2">危険シグナル（Step 4）</p>
             <div className="space-y-2">
               {[
                 { k: 'insolvency',      label: '債務超過' },
@@ -814,7 +811,7 @@ function AddModal({ onAdd, onClose }) {
         onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold">銘柄を追加</h2>
-          <button onClick={onClose} className="text-gray-500 text-xl">✕</button>
+          <button onClick={onClose} className="text-gray-500 text-xl">×</button>
         </div>
         <div className="space-y-3">
           <div>
@@ -903,7 +900,7 @@ function Portfolio({ stocks, priceData }) {
 
       {n === 0 ? (
         <div className="text-center text-gray-600 py-16">
-          <p className="text-5xl mb-3">🥧</p>
+          <p className="text-sm text-gray-600 mb-1">—</p>
           <p className="text-sm font-medium text-gray-500">まだ買い増し記録がありません</p>
           <p className="text-xs text-gray-600 mt-1">「監視リスト」の銘柄カードから購入を記録すると表示されます</p>
         </div>
@@ -937,7 +934,7 @@ function Portfolio({ stocks, priceData }) {
           {/* Deviation */}
           <div className={`rounded-xl p-3 border ${dev > 10 ? 'bg-yellow-900/30 border-yellow-700' : 'bg-green-900/20 border-green-800'}`}>
             <p className={`font-semibold text-sm ${dev > 10 ? 'text-yellow-400' : 'text-green-400'}`}>
-              {dev > 10 ? '⚠️ 目標比率からの乖離あり' : '✅ 目標比率内'}
+              {dev > 10 ? '目標比率からの乖離あり' : '目標比率内'}
             </p>
             <p className="text-xs text-gray-400 mt-1">
               目標: コア {TARGET_CORE}% / サテライト {100 - TARGET_CORE}%　→　乖離 {dev.toFixed(0)}pt
@@ -1093,7 +1090,7 @@ function Records({ stocks, onAdd, onDelete }) {
                     {p.note && <p className="text-xs text-gray-500 mt-0.5 truncate">{p.note}</p>}
                   </div>
                   <button onClick={() => { if(confirm('削除しますか？')) onDelete(s.id, p.id); }}
-                    className="text-gray-600 active:text-red-400 shrink-0 text-sm">🗑️</button>
+                    className="text-gray-600 active:text-red-400 shrink-0 text-xs">削除</button>
                 </div>
               ))}
             </div>
@@ -1103,7 +1100,7 @@ function Records({ stocks, onAdd, onDelete }) {
 
       {targeted.every(s => !s.purchases?.length) && (
         <div className="text-center text-gray-600 py-16">
-          <p className="text-5xl mb-3">📝</p>
+          <p className="text-sm text-gray-600 mb-1">—</p>
           <p className="text-sm">記録がありません</p>
         </div>
       )}
